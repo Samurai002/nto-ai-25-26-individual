@@ -28,6 +28,10 @@ def predict() -> None:
     features = [
         col for col in test_set.columns if col not in [constants.COL_SOURCE, config.TARGET, constants.COL_PREDICTION]
     ]
+    # Exclude any remaining object columns that are not model features
+    non_feature_object_cols = test_set[features].select_dtypes(include=["object"]).columns.tolist()
+    features = [f for f in features if f not in non_feature_object_cols]
+
     X_test = test_set[features]
 
     # Generate predictions from all fold models

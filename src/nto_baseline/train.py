@@ -3,6 +3,7 @@ Main training script for the LightGBM model.
 """
 
 import lightgbm as lgb
+import numpy as np
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.model_selection import GroupKFold
 
@@ -29,6 +30,10 @@ def train() -> None:
     features = [
         col for col in train_set.columns if col not in [constants.COL_SOURCE, config.TARGET, constants.COL_PREDICTION]
     ]
+    # Exclude any remaining object columns that are not model features
+    non_feature_object_cols = train_set[features].select_dtypes(include=["object"]).columns.tolist()
+    features = [f for f in features if f not in non_feature_object_cols]
+
     X = train_set[features]
     y = train_set[config.TARGET]
     groups = train_set[constants.COL_USER_ID]
@@ -63,7 +68,7 @@ def train() -> None:
 
         # Evaluate the model
         val_preds = model.predict(X_val)
-        rmse = mean_squared_error(y_val, val_preds, squared=False)
+        rmse = np.sqrt(mean_squared_error(y_val, val_preds))
         mae = mean_absolute_error(y_val, val_preds)
         print(f"Fold {fold + 1} Validation RMSE: {rmse:.4f}, MAE: {mae:.4f}")
 

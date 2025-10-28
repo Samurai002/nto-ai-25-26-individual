@@ -88,6 +88,9 @@ def load_and_merge_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 
     # Join metadata
     combined_df = combined_df.merge(user_data_df, on=constants.COL_USER_ID, how="left")
+
+    # Drop duplicates from book_data_df before merging
+    book_data_df = book_data_df.drop_duplicates(subset=[constants.COL_BOOK_ID])
     combined_df = combined_df.merge(book_data_df, on=constants.COL_BOOK_ID, how="left")
 
     print(f"Merged data shape: {combined_df.shape}")

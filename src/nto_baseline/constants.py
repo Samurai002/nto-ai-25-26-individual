@@ -6,13 +6,13 @@ structure but are not intended to be tuned as hyperparameters.
 """
 
 # --- FILENAMES ---
-TRAIN_FILENAME = "train.csv"
-TEST_FILENAME = "test.csv"
-USER_DATA_FILENAME = "user_data.csv"
-BOOK_DATA_FILENAME = "book_data.csv"
-BOOK_GENRES_FILENAME = "book_genres.csv"
-GENRES_FILENAME = "genres.csv"
-SUBMISSION_FILENAME = "baseline_submission.csv"
+TRAIN_FILENAME = "stage1_public_train.csv"
+TEST_FILENAME = "stage1_public_test.csv"
+USER_DATA_FILENAME = "stage1_public_users.csv"
+BOOK_DATA_FILENAME = "stage1_public_books.csv"
+BOOK_GENRES_FILENAME = "stage1_public_book_genres.csv"
+GENRES_FILENAME = "stage1_public_genres.csv"
+SUBMISSION_FILENAME = "submission.csv"
 
 # --- COLUMN NAMES ---
 # Main columns
