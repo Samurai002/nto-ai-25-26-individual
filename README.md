@@ -38,14 +38,8 @@ curl -sSL https://install.python-poetry.org | python3 -
 
 ### Установка зависимостей
 
-1.
 ```bash
 poetry install
-```
-
-2.
-```bash
-pip install optuna catboost
 ```
 
 ### Структура данных
