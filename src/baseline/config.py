@@ -33,9 +33,9 @@ TARGET = constants.COL_TARGET  # Alias for consistency
 TEMPORAL_SPLIT_RATIO = 0.8
 
 # --- TRAINING CONFIG ---
-EARLY_STOPPING_ROUNDS = 50
+EARLY_STOPPING_ROUNDS = 500
 MODEL_FILENAME_PATTERN = "lgb_fold_{fold}.txt"  # Deprecated: kept for backwards compatibility
-MODEL_FILENAME = "lgb_model.txt"  # Single model filename for temporal split
+MODEL_FILENAME = "cat_model.cbm"  # Single model filename for temporal split
 
 # --- TF-IDF PARAMETERS ---
 TFIDF_MAX_FEATURES = 500

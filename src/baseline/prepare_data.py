@@ -23,7 +23,7 @@ def prepare_data() -> None:
     Note: Aggregate features are computed separately during training to ensure
     temporal correctness (no data leakage from validation set).
 
-    The processed data can then be used by train.py and predict.py without
+    The processed data can then be used by train_cat.py and predict.py without
     re-running the expensive feature engineering steps.
     """
     print("=" * 60)

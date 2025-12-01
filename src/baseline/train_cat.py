@@ -1,14 +1,17 @@
 """
-Main training script for the LightGBM model.
+Main training script for the model (CatBoost instead of LightGBM).
 
 Uses temporal split with absolute date threshold to ensure methodologically
 correct validation without data leakage from future timestamps.
 """
 
-import lightgbm as lgb
+
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+
+import optuna
+from catboost import CatBoostRegressor
 
 from . import config, constants
 from .features import add_aggregate_features, handle_missing_values
@@ -20,8 +23,7 @@ def train() -> None:
 
     Loads prepared data from data/processed/, performs temporal split based on
     absolute date threshold, computes aggregate features on train split only,
-    and trains a single LightGBM model. This ensures methodologically correct
-    validation without data leakage from future timestamps.
+    and trains a single CatBoost model (hyperparameters tuned with Optuna).
 
     Note: Data must be prepared first using prepare_data.py
     """
@@ -110,35 +112,100 @@ def train() -> None:
 
     print(f"Training features: {len(features)}")
 
-    # Ensure model directory exists
-    config.MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    # --- Определяем категориальные фичи для CatBoost ---
+    cat_feature_names = [
+        col for col in X_train.columns
+        if str(train_split_final[col].dtype) == "category"
+    ]
+    cat_feature_indices = [X_train.columns.get_loc(col) for col in cat_feature_names]
+    if cat_feature_indices:
+        print(f"CatBoost categorical features: {cat_feature_names}")
+    else:
+        print("No categorical features detected for CatBoost.")
 
-    # Train single model
-    print("\nTraining LightGBM model...")
-    model = lgb.LGBMRegressor(**config.LGB_PARAMS)
+    # --- Сэмпл 30% данных для подбора гиперпараметров Optuna ---
+    sample_frac = 0.3
+    if len(X_train) > 0:
+        sample_indices = X_train.sample(frac=sample_frac, random_state=config.RANDOM_STATE).index
+        X_train_sample = X_train.loc[sample_indices]
+        y_train_sample = y_train.loc[sample_indices]
+        print(f"Using {len(X_train_sample):,} rows ({sample_frac*100:.0f}%) for Optuna hyperparameter tuning.")
+    else:
+        X_train_sample = X_train
+        y_train_sample = y_train
+        print("Train set is empty, skipping sampling for Optuna.")
 
-    # Update fit params with early stopping callback
-    fit_params = config.LGB_FIT_PARAMS.copy()
-    fit_params["callbacks"] = [lgb.early_stopping(stopping_rounds=config.EARLY_STOPPING_ROUNDS, verbose=False)]
+    # --- Optuna: подбор гиперпараметров для CatBoost ---
+    def objective(trial: optuna.trial.Trial) -> float:
+        params = {
+            "loss_function": "RMSE",
+            "eval_metric": "RMSE",
+            "random_state": config.RANDOM_STATE,
+            "iterations": trial.suggest_int("iterations", 500, 2000),
+            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+            "depth": trial.suggest_int("depth", 4, 10),
+            "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1e-2, 10.0, log=True),
+            "bagging_temperature": trial.suggest_float("bagging_temperature", 0.0, 5.0),
+            "border_count": trial.suggest_int("border_count", 32, 255),
+            "task_type": "CPU",
+            "thread_count": -1,
+        }
 
-    model.fit(
+        model = CatBoostRegressor(**params)
+        model.fit(
+            X_train_sample,
+            y_train_sample,
+            eval_set=(X_val, y_val),
+            verbose=500,
+            early_stopping_rounds=config.EARLY_STOPPING_ROUNDS,
+            cat_features=cat_feature_indices if cat_feature_indices else None,
+        )
+
+        val_preds = model.predict(X_val)
+        rmse = np.sqrt(mean_squared_error(y_val, val_preds))
+        return rmse
+
+    print("\nStarting Optuna hyperparameter search for CatBoost...")
+    study = optuna.create_study(direction="minimize")
+    study.optimize(objective, n_trials=30)
+    print(f"\nBest trial RMSE: {study.best_value:.4f}")
+    print(f"Best params: {study.best_params}")
+
+    # --- Обучение финальной модели ---
+    best_params = study.best_params.copy()
+    best_params.update(
+        {
+            "loss_function": "RMSE",
+            "eval_metric": "RMSE",
+            "random_state": config.RANDOM_STATE,
+            "task_type": "CPU",
+            "thread_count": -1,
+        }
+    )
+
+    print("\nTraining final CatBoost model on full training data...")
+    final_model = CatBoostRegressor(**best_params)
+
+    final_model.fit(
         X_train,
         y_train,
-        eval_set=[(X_val, y_val)],
-        eval_metric=fit_params["eval_metric"],
-        callbacks=fit_params["callbacks"],
+        eval_set=(X_val, y_val),
+        verbose=100,
+        early_stopping_rounds=config.EARLY_STOPPING_ROUNDS,
+        cat_features=cat_feature_indices if cat_feature_indices else None,
     )
 
     # Evaluate the model
-    val_preds = model.predict(X_val)
+    val_preds = final_model.predict(X_val)
     rmse = np.sqrt(mean_squared_error(y_val, val_preds))
     mae = mean_absolute_error(y_val, val_preds)
     print(f"\nValidation RMSE: {rmse:.4f}, MAE: {mae:.4f}")
 
-    # Save the trained model
+    # Save the trained model in .cbm format
+    config.MODEL_DIR.mkdir(parents=True, exist_ok=True)
     model_path = config.MODEL_DIR / config.MODEL_FILENAME
-    model.booster_.save_model(str(model_path))
-    print(f"Model saved to {model_path}")
+    final_model.save_model(str(model_path), format="cbm")
+    print(f"Model saved to {model_path} (CatBoost .cbm format)")
 
     print("\nTraining complete.")
 
